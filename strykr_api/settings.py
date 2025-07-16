@@ -155,17 +155,28 @@ WSGI_APPLICATION = "strykr_api.wsgi.application"
 
 import os 
 
-DATABASES = {
-	'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.environ.get("PGDATABASE", "strykr_api_db"),
-        'USER': os.environ.get("PGUSER", "postgres"),
-        'PASSWORD': os.environ.get("PGPASSWORD", ""),
-        'HOST': os.environ.get("PGHOST", "localhost"),
-        'PORT': os.environ.get("PGPORT", "5432"),
-        'CONN_MAX_AGE': 300,  # Keep connections alive for 5 minutes
+# Database configuration - use SQLite for local development if USE_SQLITE is set
+USE_SQLITE = env.bool("USE_SQLITE", default=False)
+
+if USE_SQLITE:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.environ.get("PGDATABASE", "strykr_api_db"),
+            'USER': os.environ.get("PGUSER", "postgres"),
+            'PASSWORD': os.environ.get("PGPASSWORD", ""),
+            'HOST': os.environ.get("PGHOST", "localhost"),
+            'PORT': os.environ.get("PGPORT", "5432"),
+            'CONN_MAX_AGE': 300,  # Keep connections alive for 5 minutes
+        }
+    }
 
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators

@@ -312,8 +312,12 @@ class Command(BaseCommand):
 
         # TODO: Process crypto data when API is selected
         crypto_data = self.fetch_crypto_data_from_fmp()
-        crypto_top_long = crypto_data["top_crypto_long"]
-        crypto_top_short = crypto_data["top_crypto_short"]
+        if crypto_data:
+            crypto_top_long = crypto_data.get("top_crypto_long", [])
+            crypto_top_short = crypto_data.get("top_crypto_short", [])
+        else:
+            crypto_top_long = []
+            crypto_top_short = []
 
 
         # Calculate market sentiment score (-100 to 100) - for stocks.

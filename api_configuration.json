@@ -1,0 +1,305 @@
+{
+  "configuration_version": "1.0",
+  "created_at": "2024-12-28T00:00:00Z",
+  "updated_at": "2024-12-28T00:00:00Z",
+  "organization": {
+    "name": "Strykr AI Analytics",
+    "description": "Multi-application data access configuration for Strykr AI ecosystem",
+    "environment": "production"
+  },
+  "applications": {
+    "main_api": {
+      "name": "Main Strykr API",
+      "description": "Primary API for market analysis and AI responses",
+      "api_key": "E9yGBPVF5aRukOVYT0Px4AwW",
+      "key_type": "server_side",
+      "permissions": {
+        "level": "full_access",
+        "endpoints": ["*"],
+        "rate_limits": {
+          "monthly_limit": 10000,
+          "daily_limit": 500,
+          "is_unlimited": false
+        }
+      },
+      "allowed_domains": ["*"],
+      "data_access": {
+        "market_data": true,
+        "ai_responses": true,
+        "technical_indicators": true,
+        "bellwether_assets": true,
+        "economic_calendar": true,
+        "market_alerts": true,
+        "real_time_market_picks": true,
+        "market_screener_results": true
+      },
+      "endpoints": {
+        "base_url": "https://api.strykr.ai",
+        "ai_response": "/api/ai-response",
+        "precision_ai": "/api/precision-ai",
+        "market_alerts": "/api/alerts",
+        "technical_indicators": "/api/technical-indicators",
+        "market_screener": "/api/alerts/market-screener",
+        "current_picks": "/api/alerts/market-screener"
+      }
+    },
+    "backtesting_portal": {
+      "name": "Backtesting Data Portal",
+      "description": "Dedicated access for backtesting systems and historical analysis",
+      "api_key": "BT_9KmN3PqX8vY2ZwA5fG7H1",
+      "key_type": "server_side",
+      "permissions": {
+        "level": "backtesting_access",
+        "endpoints": [
+          "/api/backtesting/*",
+          "/api/precision-ai",
+          "/api/technical-indicators"
+        ],
+        "rate_limits": {
+          "monthly_limit": 50000,
+          "daily_limit": 2000,
+          "is_unlimited": false
+        }
+      },
+      "allowed_domains": ["localhost", "*.backtesting.strykr.ai"],
+      "data_access": {
+        "historical_market_data": true,
+        "portfolio_snapshots": true,
+        "backtest_results": true,
+        "trading_signals": true,
+        "market_screener_data": true,
+        "performance_analytics": true,
+        "data_export": true,
+        "real_time_market_picks": true,
+        "live_trading_recommendations": true
+      },
+      "endpoints": {
+        "base_url": "https://api.strykr.ai",
+        "historical_data": "/api/backtesting/historical-data",
+        "portfolio_snapshots": "/api/backtesting/portfolio-snapshots",
+        "backtest_results": "/api/backtesting/backtest-results",
+        "trading_signals": "/api/backtesting/trading-signals",
+        "analytics": "/api/backtesting/analytics",
+        "export": "/api/backtesting/export",
+        "current_market_picks": "/api/alerts/market-screener",
+        "live_recommendations": "/api/alerts/market-screener"
+      },
+      "data_sources": {
+        "market_screener_results": {
+          "enabled": true,
+          "table": "MarketScreenerResult",
+          "frequency": "daily"
+        },
+        "historical_ohlc": {
+          "enabled": true,
+          "table": "HistoricalMarketData",
+          "frequency": "daily"
+        },
+        "portfolio_tracking": {
+          "enabled": true,
+          "table": "PortfolioSnapshot",
+          "frequency": "daily"
+        }
+      }
+    },
+    "mobile_app": {
+      "name": "Strykr Mobile Application",
+      "description": "Client-side access for mobile applications",
+      "api_key": "Client_MB_7JkL9MnP2QrS4TvW",
+      "key_type": "client_side",
+      "permissions": {
+        "level": "mobile_access",
+        "endpoints": [
+          "/api/ai-response",
+          "/api/market-alerts",
+          "/api/bellwether-assets"
+        ],
+        "rate_limits": {
+          "monthly_limit": 5000,
+          "daily_limit": 200,
+          "is_unlimited": false
+        }
+      },
+      "allowed_domains": ["strykr.ai", "*.strykr.ai", "app.strykr.ai"],
+      "data_access": {
+        "market_data": true,
+        "ai_responses": true,
+        "market_alerts": true,
+        "bellwether_assets": true,
+        "limited_historical": true
+      }
+    },
+    "web_dashboard": {
+      "name": "Web Dashboard Interface",
+      "description": "Client-side access for web dashboard",
+      "api_key": "Client_WD_3FgH6JkL8MnQ1RtY",
+      "key_type": "client_side",
+      "permissions": {
+        "level": "dashboard_access",
+        "endpoints": [
+          "/api/ai-response",
+          "/api/dashboard/*",
+          "/api/market-alerts",
+          "/api/backtesting/analytics"
+        ],
+        "rate_limits": {
+          "monthly_limit": 15000,
+          "daily_limit": 750,
+          "is_unlimited": false
+        }
+      },
+      "allowed_domains": ["dashboard.strykr.ai", "*.strykr.ai"],
+      "data_access": {
+        "market_data": true,
+        "ai_responses": true,
+        "dashboard_analytics": true,
+        "portfolio_overview": true,
+        "performance_metrics": true
+      }
+    },
+    "research_tools": {
+      "name": "Research & Analytics Tools",
+      "description": "High-volume access for research and data analysis",
+      "api_key": "RT_5HjK8LnP1QsV4WxZ7",
+      "key_type": "server_side",
+      "permissions": {
+        "level": "research_access",
+        "endpoints": ["*"],
+        "rate_limits": {
+          "monthly_limit": 100000,
+          "daily_limit": 5000,
+          "is_unlimited": false
+        }
+      },
+      "allowed_domains": ["research.strykr.ai", "*.research.strykr.ai"],
+      "data_access": {
+        "bulk_data_export": true,
+        "historical_analysis": true,
+        "custom_queries": true,
+        "advanced_analytics": true,
+        "machine_learning_datasets": true
+      }
+    }
+  },
+  "data_organization": {
+    "asset_types": {
+      "stocks": {
+        "sources": ["financial_modeling_prep", "bellwether_tracking"],
+        "indicators": ["RSI", "EMA", "SMA", "DEMA"],
+        "data_points": ["price", "volume", "market_cap", "sector", "industry"]
+      },
+      "crypto": {
+        "sources": ["coingecko", "moralis"],
+        "indicators": ["RSI", "EMA", "SMA", "social_sentiment"],
+        "data_points": ["price", "volume", "market_cap", "social_metrics", "on_chain_data"]
+      },
+      "economic_indicators": {
+        "sources": ["economic_calendar"],
+        "data_points": ["gdp", "inflation", "interest_rates", "employment"]
+      }
+    },
+    "data_flows": {
+      "market_screener_to_backtesting": {
+        "source_table": "MarketScreenerResult",
+        "target_tables": ["HistoricalMarketData", "TradingSignal", "PortfolioSnapshot"],
+        "transformation": "daily_aggregation",
+        "frequency": "daily_12am_utc"
+      },
+      "real_time_to_historical": {
+        "source": "live_market_data",
+        "target_table": "HistoricalMarketData",
+        "transformation": "ohlc_aggregation",
+        "frequency": "hourly"
+      }
+    }
+  },
+  "integration_patterns": {
+    "backtesting_integration": {
+      "description": "Integration pattern for external backtesting systems",
+      "authentication": {
+        "method": "api_key_header",
+        "header_name": "X-API-Key",
+        "key_reference": "applications.backtesting_portal.api_key"
+      },
+      "data_export_formats": {
+        "csv": {
+          "enabled": true,
+          "compression": "gzip",
+          "max_rows_per_file": 100000
+        },
+        "json": {
+          "enabled": true,
+          "compression": "gzip",
+          "nested_structure": true
+        },
+        "parquet": {
+          "enabled": true,
+          "compression": "snappy",
+          "schema_evolution": true
+        }
+      },
+      "polling_strategy": {
+        "method": "incremental_sync",
+        "check_frequency": "hourly",
+        "batch_size": 1000,
+        "checkpoint_field": "updated_at"
+      }
+    },
+    "mobile_integration": {
+      "description": "Lightweight integration for mobile applications",
+      "authentication": {
+        "method": "client_side_key",
+        "header_name": "X-API-Key",
+        "key_prefix": "Client ",
+        "domain_validation": true
+      },
+      "response_optimization": {
+        "compression": true,
+        "field_filtering": true,
+        "pagination": true,
+        "caching": "aggressive"
+      }
+    }
+  },
+  "monitoring": {
+    "usage_tracking": {
+      "enabled": true,
+      "metrics": ["request_count", "response_time", "error_rate", "data_volume"],
+      "alerts": {
+        "rate_limit_threshold": 80,
+        "error_rate_threshold": 5,
+        "response_time_threshold": 2000
+      }
+    },
+    "security_monitoring": {
+      "enabled": true,
+      "track_failed_auth": true,
+      "track_suspicious_patterns": true,
+      "ip_rate_limiting": true
+    }
+  },
+  "backup_and_recovery": {
+    "api_key_rotation": {
+      "enabled": true,
+      "rotation_frequency": "quarterly",
+      "overlap_period": "7_days"
+    },
+    "data_retention": {
+      "historical_data": "5_years",
+      "api_logs": "1_year",
+      "backtest_results": "permanent"
+    }
+  },
+  "development": {
+    "testing_keys": {
+      "unit_tests": "TEST_UT_1234567890abcdef",
+      "integration_tests": "TEST_IT_abcdef1234567890",
+      "staging": "STAGE_STG_fedcba0987654321"
+    },
+    "sandbox_environment": {
+      "base_url": "https://api-staging.strykr.ai",
+      "data_isolation": true,
+      "mock_external_apis": true
+    }
+  }
+} 

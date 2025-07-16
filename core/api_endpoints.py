@@ -21,6 +21,7 @@ from ninja.errors import HttpError
 from .ai_response_endpoint import ai_response
 from .api_key_views import router as api_key_router
 from .api_alert_views import router as api_alert_router
+from .api_backtesting_views import router as api_backtesting_router
 from .api_utils import validate_api_key, client, month_numbers
 from .data_fetchers import fetch_economic_calendar_data
 from .models import AIQuery, EconomicEvents
@@ -118,4 +119,5 @@ async def calendar(
 
 # Add endpoints to create API Keys and manage them.
 api.add_router("/dashboard", api_key_router)
-api.add_router("/alerts", api_alert_router) 
+api.add_router("/alerts", api_alert_router)
+api.add_router("/backtesting", api_backtesting_router) 
