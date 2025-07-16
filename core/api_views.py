@@ -81,7 +81,7 @@ from .prompt_builder import get_bellwether_assets_indices, get_full_prompt, get_
 from .api_key_views import router as api_key_router
 from .api_alert_views import router as api_alert_router
 from .error_handlers import api_response_error_handler
-from .response_helpers import get_helpful_fallback
+from .response_helpers import get_helpful_fallback, json_endpoint_with_real_timestamps, create_enhanced_json_response
 
 # Initialize API
 api = NinjaAPI()
@@ -172,3 +172,81 @@ async def calendar(
 # Add endpoints to create API Keys and manage them.
 api.add_router("/dashboard", api_key_router)
 api.add_router("/alerts", api_alert_router)
+
+
+@api.get("/market-screener-realtime")
+@json_endpoint_with_real_timestamps
+def market_screener_realtime(request):
+    """
+    Example endpoint demonstrating automatic real timestamp switching.
+    This endpoint will automatically convert all timestamps to real-time format.
+    """
+    # Sample market screener data with various timestamp formats
+    sample_data = {
+        "market_picks": [
+            {
+                "symbol": "AAPL",
+                "recommendation": "BUY",
+                "confidence_score": 0.85,
+                "analysis_date": "2024-01-01T12:00:00Z",  # This will be converted to real timestamp
+                "price_target": 185.50,
+                "current_price": 175.30
+            },
+            {
+                "symbol": "TSLA", 
+                "recommendation": "HOLD",
+                "confidence_score": 0.72,
+                "analysis_date": "2024-01-01T12:00:00Z",  # This will be converted to real timestamp
+                "price_target": 250.00,
+                "current_price": 245.80
+            }
+        ],
+        "generated_at": "2024-01-01T12:00:00Z",  # This will be converted to real timestamp
+        "market_session": "ACTIVE",
+        "total_picks": 2
+    }
+    
+    return sample_data
+
+
+@api.get("/backtesting-historical")
+def backtesting_historical_data(request):
+    """
+    Example endpoint demonstrating historical timestamp preservation.
+    This endpoint will preserve original timestamps for backtesting purposes.
+    """
+    from .response_helpers import create_enhanced_json_response
+    
+    # Sample historical data with preserved timestamps
+    historical_data = {
+        "backtest_results": [
+            {
+                "symbol": "BTC",
+                "entry_date": "2023-06-15T09:30:00Z",  # Historical timestamp preserved
+                "exit_date": "2023-06-20T16:00:00Z",   # Historical timestamp preserved
+                "entry_price": 26500.00,
+                "exit_price": 28200.00,
+                "return_pct": 6.42
+            },
+            {
+                "symbol": "ETH",
+                "entry_date": "2023-06-15T09:30:00Z",  # Historical timestamp preserved
+                "exit_date": "2023-06-18T14:30:00Z",   # Historical timestamp preserved  
+                "entry_price": 1650.00,
+                "exit_price": 1720.00,
+                "return_pct": 4.24
+            }
+        ],
+        "backtest_period": {
+            "start_date": "2023-06-01T00:00:00Z",   # Historical timestamp preserved
+            "end_date": "2023-08-31T23:59:59Z"      # Historical timestamp preserved
+        },
+        "total_return": 5.33
+    }
+    
+    # Use 'preserve' mode to keep historical timestamps intact
+    return create_enhanced_json_response(
+        data=historical_data,
+        request=request,
+        timestamp_mode='preserve'
+    )

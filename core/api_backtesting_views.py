@@ -275,7 +275,7 @@ def get_backtest_results_by_strategy(request, strategy_name: str):
 @router.get("/signals", response=PaginatedTradingSignals)
 def list_trading_signals(request, query: SignalQuery = Query(...)):
     """List trading signals with comprehensive filtering."""
-    queryset = TradingSignal.objects.select_related('source_screener', 'historical_data')
+    queryset = TradingSignal.objects.select_related('source_screener')
     
     # Apply filters
     if query.symbols:
