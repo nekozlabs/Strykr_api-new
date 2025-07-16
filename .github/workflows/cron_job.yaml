@@ -1,0 +1,68 @@
+name: Run Django Commands on Railway
+
+on:
+  push:
+    branches:
+      - "v3_staging"
+  schedule:
+    - cron: '*/10 * * * *'  
+    - cron: '0 * * * *'    
+  
+jobs:
+  run-10-min-task:
+    if: github.event.schedule == '*/10 * * * *'
+    name: Run 10-Minute Task
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 16
+
+      - name: Install Railway CLI
+        run: npm i -g @railway/cli
+
+      - name: Install Python Packages
+        run: railway run --service {{SERVICE_ID}} pip install -r requirements.txt
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+      - name: Get Bellwether Assets
+        run: railway run --service {{SERVICE_ID}} python manage.py get_bellwether_assets
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+  run-hourly-tasks:
+    if: github.event.schedule == '0 * * * *'
+    name: Run Hourly Tasks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 16
+
+      - name: Install Railway CLI
+        run: npm i -g @railway/cli
+
+      - name: Install Python Packages
+        run: railway run --service {{SERVICE_ID}} pip install -r requirements.txt
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+      - name: Generate Market Alert
+        run: railway run --service {{SERVICE_ID}} python manage.py generate_market_alert
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+      - name: Generate Calendar Alert
+        run: railway run --service {{SERVICE_ID}} manage.py generate_calendar_alert
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+      - name: Generate News Alert
+        run: railway run --service {{SERVICE_ID}} python manage.py generate_news_alert
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}

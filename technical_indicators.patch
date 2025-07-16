@@ -1,0 +1,885 @@
+diff --git a/STRYKR AI API.md b/STRYKR AI API.md
+new file mode 100644
+index 0000000..2e6aeb5
+--- /dev/null
++++ b/STRYKR AI API.md	
+@@ -0,0 +1,101 @@
++# STRYKR AI API
++
++## Exact Failed Queries and Current Status
++
++| Exact Query | Issue | Implementation | Status | 
++|---|---|---|---|
++| "What are the top ten memecoins by marketcap?" | FMP API lacks meme coin categorization | Added crypto category detection, but FMP API doesn't support meme coin filtering | **NOT FIXED** - Requires CoinGecko or CoinMarketCap API integration |
++| "How will the Taiwan market affect US stocks?" | No geopolitical analysis framework | Added market context section in response structure | **PARTIALLY FIXED** - Better structure but limited data |
++| "Is the selloff due to tariffs or tax payments?" | Limited multi-factor analysis | Implemented four-part response with specific analysis section | **FIXED** - Now provides structured multi-factor analysis |
++| "Major macro news catalysts for April and May 2025?" | Limited forward-looking data | Enhanced prompt with better economic calendar handling | **PARTIALLY FIXED** - Better handling but calendar data still limited |
++| "What is the RSI for ETH?" | Missing technical indicators | Implemented comprehensive technical indicator support | **FIXED** - Technical indicators now available for both bellwether and arbitrary assets |
++
++## Implemented Technical Indicator Improvements
++
++We have successfully implemented comprehensive technical indicator support across the Strykr API. The system now properly handles all four technical indicators and supports queries about technical indicators for arbitrary assets.
++
++### What We've Improved
++
++1. **Enhanced Bellwether Assets Processing**
++   - Now fetches and stores all four indicators (RSI, EMA, SMA, DEMA) for bellwether assets
++   - Includes complete indicator metadata (timeframe, period) in the database
++   - Standardized data structure for consistent processing
++
++2. **Added Technical Indicator Support to Precision API**
++   - Implemented detection for technical indicator queries
++   - Created robust technical indicator fetching for arbitrary assets
++   - Added resilient error handling that works with partial data
++   - Standardized technical indicator data structure
++
++### Files Updated
++
++1. **core/management/commands/get_bellwether_assets.py**
++   - Implemented fetching and storing of all four indicators with metadata
++   - Added proper error handling and standardized structure
++
++2. **core/api_views.py**
++   - Enhanced bellwether asset processing to include all four indicators
++   - Added `fetch_technical_indicators()` and `get_technical_indicator()` functions
++   - Implemented technical query detection and data integration
++   - Added robust error handling throughout
++
++3. **core/prompt_builder.py**
++   - Added technical indicators section to the prompt template
++   - Included metadata display and interpretation guidelines
++   - Implemented resilient data handling with null checks and defaults
++   - Added context-aware RSI analysis
++
++### What This Enables
++
++- Successfully handles queries like "What is the RSI for ETH?"
++- Provides comprehensive technical analysis capabilities
++- Delivers complete indicator data with proper context and interpretation
++- Makes responses more technically informed and useful
++- Handles partial or missing data gracefully
++
++## Key Code Changes
++
++### api_views.py
++
++1. **Query Classification System** (lines 48-160)
++   ```python
++   def classify_query(query):
++       # Two-tier keyword matching with primary/secondary terms
++       # Returns categories and risk context
++   ```
++   - Identifies query categories (crypto, options, forex, etc.)
++   - Provides category-specific risk guidelines
++   - Uses try/except for error resilience
++
++2. **Enhanced System Prompt** (lines 469-503)
++   ```python
++   system_message = """You are a state-of-the-art AI-powered Financial Market Analysis and Trading Assistant...
++   
++   ### STRUCTURED RESPONSE FRAMEWORK:
++      - MARKET CONTEXT: Outline current market conditions and sentiment.
++      - SPECIFIC ANALYSIS: Provide clear, actionable insights tailored to the query.
++      - RISK MANAGEMENT: Include position sizing (1-2% rule) and risk considerations.
++      - ACTION STEPS: Offer 2-3 clear, implementable takeaways.
++   """
++   ```
++
++### prompt_builder.py
++
++1. **Improved Prompt Builder** (lines 291-340)
++   ```python
++   # Conditional templates based on available data
++   {% if economic_calendar_data is None and bellwether_assets is None %}
++     # Fallback to asset-specific data only
++   {% endif %}
++   
++   # Integration of query classification context
++   {% if query_context and query_context.categories %}
++     # QUERY CLASSIFICATION
++     # Category-specific risk guidance
++   {% else %}
++     # Fallback risk guidelines
++   {% endif %}
++   ```
++   - Safe handling of missing data sources
++   - Default risk context when classification fails
++   - Data-aware response templates
+diff --git a/core/api_views.py b/core/api_views.py
+index e4d6835..51cb8c4 100644
+--- a/core/api_views.py
++++ b/core/api_views.py
+@@ -42,6 +42,124 @@ month_numbers = {
+ 	"dec": "12",
+ }
+ 
++
++# Import logging if not already imported
++import logging
++
++def classify_query(query):
++	"""
++	Classify financial queries to enhance context and provide tailored responses.
++
++	This function analyzes the query text to identify its category (crypto, options, etc.)
++	and adds relevant risk management context based on the identified categories.
++	The classification enhances AI responses with market-specific insights and appropriate
++	risk management guidelines.
++
++	Args:
++		query (str): The user's financial query text
++
++	Returns:
++		dict: Contains 'categories' list and category-specific 'risk_context'
++	"""
++	try:
++		# Clean and normalize input for consistent matching
++		query_lower = query.lower().strip()
++		query_words = set(query_lower.split())
++		
++		context = {
++			"categories": [],  # List of matched categories (crypto, options, etc.)
++			"risk_context": {}  # Category-specific risk management information
++		}
++		
++		# Classification dictionary with two-tier matching system:
++		# - Primary terms: High-confidence exact match phrases 
++		# - Secondary terms: Individual words checked against tokenized query
++		keyword_categories = {
++			"crypto": {
++				"primary": ["bitcoin", "btc", "ethereum", "eth", "crypto", "defi", "token"],
++				"secondary": ["altcoin", "blockchain", "mining", "wallet", "nft"]
++			},
++			"options": {
++				"primary": ["option", "call", "put", "strike", "expiry", "theta"],
++				"secondary": ["delta", "gamma", "vega", "contract", "premium", "covered"]
++			},
++			"daytrading": {
++				"primary": ["day trade", "scalp", "entry", "exit", "support", "resistance"],
++				"secondary": ["momentum", "breakout", "reversal", "oscillator", "volume"]
++			},
++			"forex": {
++				"primary": ["forex", "currency", "eur", "usd", "jpy", "gbp"],
++				"secondary": ["exchange rate", "pip", "lot", "spread", "central bank"]
++			},
++			"economic": {
++				"primary": ["gdp", "unemployment", "cpi", "pmi", "recession", "inflation"],
++				"secondary": ["interest rate", "fed", "fomc", "fiscal", "monetary policy"]
++			}
++		}
++		
++		# Two-tier matching process for high-quality classification
++		for category, terms in keyword_categories.items():
++			# TIER 1: Full phrase matching for primary terms (highest confidence)
++			if any(keyword in query_lower for keyword in terms["primary"]):
++				context["categories"].append(category)
++				continue  # Skip secondary matching once primary match found
++				
++			# TIER 2: Word-level matching for secondary terms (medium confidence)
++			if any(keyword in query_words for keyword in terms["secondary"]):
++				context["categories"].append(category)
++		
++		# Add category-specific risk management context based on detected categories
++		# Categories are checked in priority order (most specialized advice first)
++		if "options" in context["categories"]:
++			context["risk_context"] = {
++				"position_sizing": "Limit to 1-3% of account per position",
++				"key_risks": "Time decay, implied volatility changes",
++				"strategy_type": "Consider defined-risk strategies for beginners"
++			}
++		elif "daytrading" in context["categories"]:
++			context["risk_context"] = {
++				"position_sizing": "1-2% max risk per trade",
++				"stop_loss": "Use hard stops, not mental stops",
++				"trade_management": "Have clear exit criteria before entry"
++			}
++		elif "crypto" in context["categories"]:
++			context["risk_context"] = {
++				"position_sizing": "Consider smaller positions due to volatility",
++				"key_risks": "Extreme volatility, liquidity issues",
++				"market_hours": "24/7 markets require careful monitoring"
++			}
++		elif "forex" in context["categories"]:
++			context["risk_context"] = {
++				"position_sizing": "Account for leverage in position sizing",
++				"key_risks": "News events can cause gaps and slippage",
++				"market_hours": "Be aware of session volatility differences"
++			}
++		elif "economic" in context["categories"]:
++			context["risk_context"] = {
++				"data_impact": "Economic releases can cause market-wide volatility",
++				"timing": "Consider reducing exposure before major announcements"
++			}
++		elif not context["categories"]:  # Add default risk context if no category matched
++			context["risk_context"] = {
++				"position_sizing": "Apply 1-2% max risk per position as a general rule",
++				"diversification": "Consider correlation between assets in portfolio"
++			}
++			
++
++				
++		return context
++		
++	except Exception as e:
++		logging.error(f"Error in query classification: {e}")
++		# Fallback context with safe defaults
++		return {
++			"categories": [],
++			"risk_context": {
++				"position_sizing": "Apply 1-2% max risk per position as a general rule",
++				"diversification": "Consider correlation between assets in portfolio"
++			}
++		}
++
+ def is_valid_ticker(ticker):
+ 	"""
+ 	Checks if a ticker symbol is valid.
+@@ -128,6 +246,131 @@ async def fetch_ticker_data(tickers):
+ 	return [quote[0] for quote in results if quote and isinstance(quote, list) and quote]
+ 
+ 
++async def get_technical_indicator(ticker, indicator_type, timeframe="1hour", period=14):
++	"""
++	Fetches technical indicator data for a given ticker symbol.
++	
++	Args:
++		ticker (str): The ticker symbol to fetch data for
++		indicator_type (str): Type of technical indicator (rsi, ema, sma, dema)
++		timeframe (str): Timeframe for the indicator (1hour, 4hour, etc.)
++		period (int): Period for the indicator calculation
++	
++	Returns:
++		dict: Technical indicator data or None if not available
++	"""
++	import httpx
++	try:
++		# Check if the ticker is valid
++		if is_valid_ticker(ticker):
++			# Create cache key
++			cache_key = f"technical_{indicator_type}_{ticker}_{timeframe}_{period}"
++			cached_data = cache.get(cache_key)
++			if cached_data:
++				return cached_data
++		else:
++			return None
++		
++		# Fetch the data from the API
++		api_response = await httpx.AsyncClient().get(
++			f"https://financialmodelingprep.com/api/v3/technical_indicator/{timeframe}/{ticker}?type={indicator_type}&period={period}&apikey={settings.FMP_API_KEY}"
++		)
++		
++		# Parse the response
++		data = api_response.json()
++		if not data or isinstance(data, dict) and "Error Message" in data:
++			return None
++		
++		# Add metadata
++		for item in data:
++			item["metadata"] = {"timeframe": timeframe, "period": period}
++		
++		# Cache the data
++		cache.set(cache_key, data, timeout=3600)
++		return data
++	
++	except Exception as e:
++		logging.error(f"Error fetching technical indicator data: {str(e)}")
++		return None
++
++
++async def fetch_technical_indicators(ticker):
++	"""
++	Fetches multiple technical indicators for a ticker in parallel.
++	
++	Args:
++		ticker (str): Ticker symbol to fetch indicators for
++	
++	Returns:
++		dict: Dictionary of indicator data with standardized structure
++	"""
++	# Ensure ticker is a string
++	if not isinstance(ticker, str):
++		try:
++			# If it's a dict with a symbol key, extract it
++			if isinstance(ticker, dict) and "symbol" in ticker:
++				ticker = ticker["symbol"]
++			else:
++				# Try to convert to string
++				ticker = str(ticker)
++		except:
++			logging.error(f"Could not convert ticker to string: {ticker}")
++			return {}
++	
++	# Define the indicators to fetch (only those we actively support)
++	indicator_configs = [
++		{"type": "rsi", "timeframe": "2hour", "period": 28},
++		{"type": "ema", "timeframe": "4hour", "period": 50},
++		{"type": "dema", "timeframe": "4hour", "period": 20},
++		{"type": "sma", "timeframe": "4hour", "period": 200},
++	]
++	
++	try:
++		# Create tasks for each indicator
++		tasks = [
++			get_technical_indicator(
++				ticker, 
++				indicator["type"], 
++				indicator["timeframe"], 
++				indicator["period"]
++			) 
++			for indicator in indicator_configs
++		]
++		
++		# Execute all tasks in parallel
++		results = await asyncio.gather(*tasks)
++		
++		# Organize results by indicator type
++		indicator_data = {}
++		for idx, data in enumerate(results):
++			if data:
++				ind_type = indicator_configs[idx]["type"]
++				
++				# Format the data for consistent access in templates
++				formatted_data = []
++				value_key = ind_type  # The key for the actual value (rsi, ema, etc.)
++				
++				for item in data[:12]:  # Limit to 12 data points
++					if value_key in item and "date" in item:
++						formatted_data.append({
++							"date": item["date"],
++							value_key: item[value_key]
++						})
++				
++				indicator_data[ind_type] = {
++					"metadata": {
++						"timeframe": indicator_configs[idx]["timeframe"],
++						"period": indicator_configs[idx]["period"]
++					},
++					"data": formatted_data
++				}
++		
++		return indicator_data
++	except Exception as e:
++		logging.error(f"Error fetching technical indicators for {ticker}: {str(e)}")
++		return {}
++
++
+ async def fetch_bellwether_assets(bellwether_assets_indices):
+ 	# Fetch bellwether assets data, parallelized.
+ 	try:
+@@ -242,13 +485,40 @@ async def ai_response(request, body: AIRequestBody):
+ 		third_party_user_id=body.third_party_user_id,
+ 	)
+ 
+-	# Parallelize the data fetching
+-	tickers = get_tickers(body.query)
++	# Classify query to enhance context with category-specific information
++	# This helps tailor the AI response to specific financial instruments/markets
++	# Enhance prompt with query classification and risk context
++	# Wrapped in try/except to ensure core functionality continues even if classification fails
++	try:
++		query_context = classify_query(body.query)
++	except Exception as e:
++		logging.error(f"Error in query classification: {e}")
++		query_context = None  # Fail gracefully - classification is enhancement, not requirement
++
++	# Extract tickers from the query
++	ticker_list = get_tickers(body.query)
++	
++	# Detect if this is a technical indicator query
++	is_technical_query = False
++	# Only include indicators we actually support
++	technical_indicators = ["rsi", "ema", "sma", "dema", "moving average", "relative strength"]
++	query_lower = body.query.lower()
++	
++	for indicator in technical_indicators:
++		if indicator in query_lower:
++			is_technical_query = True
++			break
+ 	
+ 	tasks = []
+-	ticker_list = [ticker for ticker in tickers[:4]]
+-
+-	tasks.append(fetch_ticker_data(ticker_list)) # Added validation so no need for extra checks.
++	ticker_list = ticker_list[:4]  # Limit to first 4 tickers
++	
++	# Fetch basic asset data
++	if ticker_list:
++		tasks.append(fetch_ticker_data(ticker_list))
++		
++		# If technical indicator query, fetch those too
++		if is_technical_query and len(ticker_list) > 0:
++			tasks.append(fetch_technical_indicators(ticker_list[0]))
+ 
+ 	if body.enable_bellwether:
+ 		bell_indicies = get_bellwether_assets_indices(body.query)
+@@ -265,11 +535,31 @@ async def ai_response(request, body: AIRequestBody):
+ 
+ 	results = await asyncio.gather(*tasks)
+ 	
+-	# This might be the issue.
+-	ticker_quotes = results[0]
+-	bellwether_assets_qs = results[1] if results[1] else []
+-	economic_calendar_data = results[2] if results[2] else {}
+-	
++	# Set results
++	ticker_quotes, economic_calendar_data, bellwether_assets, technical_data = None, None, None, None
++
++	if results:
++		result_index = 0
++		
++		# Basic ticker data
++		if ticker_list:
++			ticker_quotes = results[result_index]
++			result_index += 1
++			
++			# Technical indicator data (if requested)
++			if is_technical_query and len(ticker_list) > 0:
++				technical_data = results[result_index]
++				result_index += 1
++		
++		# Bellwether assets data
++		if body.enable_bellwether:
++			bellwether_assets = results[result_index]
++			result_index += 1
++		
++		# Economic calendar data
++		if body.enable_macro:
++			economic_calendar_data = results[result_index]
++
+ 	# Prepare Module 1 data for the prompt
+ 	ticker_data_for_prompt = {}
+ 	if ticker_quotes:
+@@ -288,25 +578,56 @@ async def ai_response(request, body: AIRequestBody):
+ 	
+ 	# Prepare Module 2 data for the prompt
+ 	bellwether_assets_dict_for_prompt = {}
+-	if bellwether_assets_qs:
+-		# RSI data
+-		for asset in bellwether_assets_qs:
+-			if asset.data_type == "RSI":
+-				bellwether_assets_dict_for_prompt[asset.symbol] = {
+-					"name": asset.name,
+-					"symbol": asset.symbol,
+-					"descriptors": asset.descriptors,
+-					"rsi_data": json.dumps(
+-						[{k: d[k] for k in ["date", "rsi"]} for d in asset.data[:12]],
+-						indent=2,
+-					),
++	
++	# Technical indicator metadata to provide context
++	indicator_metadata = {
++		"RSI": {"timeframe": "2-hour", "period": 28, "fields": ["date", "rsi"]},
++		"EMA": {"timeframe": "4-hour", "period": 50, "fields": ["date", "ema"]},
++		"DEMA": {"timeframe": "4-hour", "period": 20, "fields": ["date", "dema"]},
++		"SMA": {"timeframe": "4-hour", "period": 200, "fields": ["date", "sma"]},
++	}
++	
++	# Add technical indicator data from arbitrary assets
++	if technical_data and ticker_list:
++		# Get the ticker symbol (first one only for now)
++		ticker_symbol = None
++		if isinstance(ticker_list[0], str):
++			ticker_symbol = ticker_list[0]
++		elif isinstance(ticker_list[0], dict) and 'symbol' in ticker_list[0]:
++			ticker_symbol = ticker_list[0]['symbol']
++		
++		# Make sure we have the ticker in the prompt data and it's a valid symbol
++		if ticker_symbol and ticker_symbol in ticker_data_for_prompt:
++			# Add the technical indicators
++			ticker_data_for_prompt[ticker_symbol]["technical_indicators"] = technical_data
++			logging.info(f"Added technical indicators for {ticker_symbol}")
++	
++	# Process bellwether assets
++	if bellwether_assets:
++		# Process all technical indicators
++		for asset in bellwether_assets:
++			# Check if this is a recognized technical indicator
++			if asset.data_type in indicator_metadata:
++				# Create the asset entry if it doesn't exist yet
++				if asset.symbol not in bellwether_assets_dict_for_prompt:
++					bellwether_assets_dict_for_prompt[asset.symbol] = {
++						"name": asset.name,
++						"symbol": asset.symbol,
++						"descriptors": asset.descriptors,
++						"technical_indicators": {}
++					}
++				
++				# Get the fields to extract for this indicator
++				fields = indicator_metadata[asset.data_type]["fields"]
++				
++				# Add this indicator data
++				bellwether_assets_dict_for_prompt[asset.symbol]["technical_indicators"][asset.data_type.lower()] = {
++					"metadata": indicator_metadata[asset.data_type],
++					"data": json.dumps(
++						[{k: d[k] for k in fields} for d in asset.data[:12]],
++						indent=2
++					)
+ 				}
+-		# EMA data
+-			if (asset.data_type == "EMA" and asset.symbol in bellwether_assets_dict_for_prompt):
+-				bellwether_assets_dict_for_prompt[asset.symbol]["ema_data"] = json.dumps(
+-					[{k: d[k] for k in ["date", "ema"]} for d in asset.data[:12]],
+-					indent=2,
+-				)
+ 	
+ 	# Preapre Module 3 data for the prompt
+ 	economic_calendar_data_for_prompt = {}
+@@ -321,19 +642,59 @@ async def ai_response(request, body: AIRequestBody):
+ 		economic_calendar_data_for_prompt["thresholds"] = json.dumps([{
+ 				k: v} for k, v in economic_calendar_data["thresholds"].items()], indent=2) 
+ 		
+-	# Create the prompt and return if applicable
++	# Create the unified prompt with all available data sources and query context
++	# This comprehensive prompt includes:
++	# 1. Base asset data (always included)
++	# 2. Bellwether market sentiment data (when enabled)
++	# 3. Economic calendar and volatility data (when enabled)
++	# 4. Query classification and risk context (always included)
+ 	prompt = get_full_prompt(
+ 		body.query,
+-		list(ticker_data_for_prompt.values()), # base response
+-		list(bellwether_assets_dict_for_prompt.values()),  # enable bellwether x
+-		economic_calendar_data_for_prompt,  # enable macro pulse
++		list(ticker_data_for_prompt.values()),  # base asset data
++		list(bellwether_assets_dict_for_prompt.values()),  # market sentiment
++		economic_calendar_data_for_prompt,  # economic calendar
++		query_context,  # query classification context
+ 	)
+ 
+ 	if body.return_prompt:
+ 		return {"prompt": prompt}
+ 
+ 	# Prepare system message based on detailed flag
+-	system_message = "You are an friendly, helpful and advanced AI Powered **Financial Market Analysis and Trading Assistant** Agent specializing in cryptocurrencies, forex, equities (including SPX500), commodities, options, and macroeconomic correlations. Your role is to provide comprehensive market insights, helping users manage positions, analyze risks, and develop actionable trading strategies based on current market conditions, macroeconomic events, and asset-specific technical analysis. Engage in natural, conversational dialogue and encourage follow-up questions."
++	system_message = """You are a state-of-the-art AI-powered Financial Market Analysis and Trading Assistant, offering unparalleled insights across cryptocurrencies, forex, equities, commodities, options, and macroeconomic correlations.
++
++### CONTEXT INTEGRATION:
++- **Bellwether Index**: Leverage top 50 global assets to assess market sentiment and identify correlations.
++- **Economic Calendar**: Utilize volatility scores and key events to anticipate market movements.
++- **Asset Data**: Deliver precise technical and fundamental analysis.
++
++### CRITICAL INSTRUCTIONS:
++1. **Resilient Insight Delivery**: Always provide valuable insights, even when specific data is missing. Use general financial knowledge to fill gaps.
++2. **Structured Response Framework**:
++   - **MARKET CONTEXT**: Outline current market conditions and sentiment.
++   - **SPECIFIC ANALYSIS**: Provide clear, actionable insights tailored to the query.
++   - **RISK MANAGEMENT**: Include position sizing (1-2% rule) and risk considerations.
++   - **ACTION STEPS**: Offer 2-3 clear, implementable takeaways.
++
++3. **Retail Trader Focus**:
++   - Simplify complex terms for easy understanding.
++   - Provide specific entry/exit levels and stop losses when appropriate.
++   - Emphasize practical, actionable advice.
++
++4. **Adapt to Diverse Query Types**:
++   - **Trade Ideas**: Detail entry, target, stop levels, and risk/reward ratio.
++   - **Market Questions**: Offer balanced assessments with evidence.
++   - **Educational Queries**: Explain concepts practically and clearly.
++   - **Geopolitical/Policy Analysis**: Analyze impacts of events like tariffs and trade wars.
++
++5. **Continuous Improvement**:
++   - Learn from user interactions to refine insights.
++   - Stay updated with the latest market trends and data sources.
++
++### PRESENTATION:
++- Format responses in clear Markdown with sections and bullet points for readability.
++- Engage users in natural, conversational dialogue, encouraging follow-up questions.
++- Do NOT respond with code, JSON or unstructured data. Only respond with text.
++"""
+ 
+ 	messages = [
+ 		{"role": "system", "content": system_message},
+diff --git a/core/management/commands/get_bellwether_assets.py b/core/management/commands/get_bellwether_assets.py
+index 5568cac..ab4fefd 100644
+--- a/core/management/commands/get_bellwether_assets.py
++++ b/core/management/commands/get_bellwether_assets.py
+@@ -11,73 +11,66 @@ class Command(BaseCommand):
+ 	help = "Get and save the bellwether assets data every 10 minutes"
+ 
+ 	def handle(self, *args, **kwargs):
++		# Define technical indicators to fetch
++		indicators = ["RSI", "EMA", "SMA", "DEMA"]
++
++		# Dictionary to store metadata about technical indicators
++		indicator_metadata = {
++			"RSI": {"timeframe": "2-hour", "period": 28},
++			"EMA": {"timeframe": "4-hour", "period": 50},
++			"DEMA": {"timeframe": "4-hour", "period": 20},
++			"SMA": {"timeframe": "4-hour", "period": 200},
++		}
++
+ 		for key, value in BELLWETHER_ASSETS.items():
+-			# RSI
+-			try:
+-				api_response = requests.get(
+-					value["RSI"].replace("your_api_key", settings.FMP_API_KEY)
+-				)
+-				api_response_json = api_response.json()
+-				## Error handling needs to be done here.
+-				api_response_error_handler(api_response_json)
+-				BellwetherAsset.objects.update_or_create(
+-					name=value["name"],
+-					symbol=value["symbol"],
+-					descriptors=value["descriptors"],
+-					api_type=value["api_type"],
+-					data_type="RSI",
+-					defaults={
+-						"name": value["name"],
+-						"symbol": value["symbol"],
+-						"descriptors": value["descriptors"],
+-						"api_type": value["api_type"],
+-						"data_type": "RSI",
+-						"data": api_response_json,
+-					},
+-					create_defaults={
+-						"name": value["name"],
+-						"symbol": value["symbol"],
+-						"descriptors": value["descriptors"],
+-						"api_type": value["api_type"],
+-						"data_type": "RSI",
+-						"data": api_response_json,
+-					},
+-				)
+-			except Exception as e:
+-				print(f"[Bellwether Assets Command] - Ran into exception: {e}")
+-				pass
+-			# EMA
+-			try:
+-				api_response = requests.get(
+-					value["EMA"].replace("your_api_key", settings.FMP_API_KEY)
+-				)
+-				api_response_json = api_response.json()
++			# Process each technical indicator
++			for indicator in indicators:
++				try:
++					# Skip if indicator not defined in asset config
++					if indicator not in value:
++						continue
++
++					# Fetch data from FMP API
++					api_response = requests.get(
++						value[indicator].replace("your_api_key", settings.FMP_API_KEY)
++					)
++					api_response_json = api_response.json()
++
++					# Error handling
++					api_response_error_handler(api_response_json)
++
++					# Add metadata to response
++					for item in api_response_json:
++						item["metadata"] = indicator_metadata[indicator]
+ 
+-				api_response_error_handler(api_response_json)
+-				BellwetherAsset.objects.update_or_create(
+-					name=value["name"],
+-					symbol=value["symbol"],
+-					descriptors=value["descriptors"],
+-					api_type=value["api_type"],
+-					data_type="EMA",
+-					defaults={
+-						"name": value["name"],
+-						"symbol": value["symbol"],
+-						"descriptors": value["descriptors"],
+-						"api_type": value["api_type"],
+-						"data_type": "EMA",
+-						"data": api_response_json,
+-					},
+-					create_defaults={
+-						"name": value["name"],
+-						"symbol": value["symbol"],
+-						"descriptors": value["descriptors"],
+-						"api_type": value["api_type"],
+-						"data_type": "EMA",
+-						"data": api_response_json,
+-					},
+-				)
+-			except Exception as e:
+-				print(f"[Bellwether Assets Command] - Ran into exception: {e}")
++					# Store in database
++					BellwetherAsset.objects.update_or_create(
++						name=value["name"],
++						symbol=value["symbol"],
++						descriptors=value["descriptors"],
++						api_type=value["api_type"],
++						data_type=indicator,
++						defaults={
++							"name": value["name"],
++							"symbol": value["symbol"],
++							"descriptors": value["descriptors"],
++							"api_type": value["api_type"],
++							"data_type": indicator,
++							"data": api_response_json,
++						},
++						create_defaults={
++							"name": value["name"],
++							"symbol": value["symbol"],
++							"descriptors": value["descriptors"],
++							"api_type": value["api_type"],
++							"data_type": indicator,
++							"data": api_response_json,
++						},
++					)
++					self.stdout.write(f"Processed {indicator} for {value['symbol']}")
++				except Exception as e:
++					self.stdout.write(self.style.ERROR(
++						f"[Bellwether Assets Command] - Error with {indicator} for {value['symbol']}: {e}"
++					))
+ 				
+-		self.stdout.write("Task completed successfully")
++		self.stdout.write(self.style.SUCCESS("Technical indicators successfully updated"))
+diff --git a/core/prompt_builder.py b/core/prompt_builder.py
+index 508be9a..57ece57 100644
+--- a/core/prompt_builder.py
++++ b/core/prompt_builder.py
+@@ -291,6 +291,25 @@ Please follow each Very Important point. Use the REFERENCE_MATERIAL to answer th
+ 
+ # Prompt template for best practice response - OpenAI format.
+ best_practice_prompt_template = """
++{% if query_context and query_context.categories %}
++# QUERY CLASSIFICATION
++{# Classification enables tailored responses for specific financial instruments #}
++This query has been classified as relating to: {{ query_context.categories|join(", ") }}
++
++{% if query_context.risk_context %}
++# RISK MANAGEMENT CONTEXT
++{# Category-specific risk guidance ensures relevant risk warnings #}
++{% for key, value in query_context.risk_context.items() %}
++- {{ key|title }}: {{ value }}
++{% endfor %}
++{% endif %}
++{% else %}
++{# Fallback risk guidelines ensure every response includes risk management #}
++# RISK MANAGEMENT GUIDELINES
++- Always consider position sizing (typically 1-2% of capital per trade)
++- Define your risk tolerance and exit strategy before entering positions
++- Diversification helps reduce unsystematic risk
++{% endif %}
+ Follow each WARNINGS point. Use the REFERENCE_MATERIAL to answer the following query, and give the answer as per RESPONSE_FORMAT. If you are unsure about the answer to any query, or if the query is not related to **Strykr**'s scope (primarily finance and technical indicators), respond with: 'Unfortunately, **Strykr** cannot answer your query as it is either out of scope or there is insufficient data to provide an accurate response.' However, if the query is about the definition of a known term within the provided reference materials, you may provide that definition. Avoid making assumptions or providing speculative information. Always start the message with 'Hi', 'Hello', or a similar greeting, and end with a closing statement like 'Hope this helps!' or 'Let me know if you need more information!'."
+ 
+ {{ query }}	
+@@ -336,9 +355,10 @@ Example Response: "Looking at [Asset], it's currently at [price], with RSI at [o
+ - Do NOT respond with code, JSON or unstructured data. Only respond with text.
+ - Return the result as Markdown.
+ - ALWAYS mention the stock prices if they are in the REFERENCE_MATERIAL.
+-- ALWAYS mention the Bellwether Assets and Macroeconomic events data to provide background support for your answer, citing relevant numbers if they are in the REFERENCE_MATERIAL.
+-- ALWAYS use the data provided in the REFERENCE_MATERIAL - never make assumptions.
++- If available, mention Bellwether Assets and Macroeconomic events data to provide background support for your answer, citing relevant numbers if they are in the REFERENCE_MATERIAL.
++- If specific data is missing, still provide the best possible analysis using general financial knowledge.
+ - Use a conversational, professional tone that is easy to follow.
++- Structure responses with MARKET CONTEXT, SPECIFIC ANALYSIS, RISK MANAGEMENT, and ACTION STEPS sections.
+ - Do not use the words "REFERENCE_MATERIAL", "WARNINGS", and "RESPONSE FORMAT" in the answer.
+ 
+ # REFERENCE_MATERIAL
+@@ -361,6 +381,38 @@ Volume: {{ ticker.volume|safe }}
+ Average Volume: {{ ticker.average_volume|safe }}
+ PE Ratio: {{ ticker.pe_ratio|safe }}
+ 
++{% if ticker.technical_indicators %}
++- **Technical Indicators**:
++  {% if ticker.technical_indicators.rsi and ticker.technical_indicators.rsi.data|length > 0 %}
++  - RSI ({{ ticker.technical_indicators.rsi.metadata.timeframe }}, {{ ticker.technical_indicators.rsi.metadata.period }}-period): {{ ticker.technical_indicators.rsi.data.0.rsi|default:"N/A"|floatformat:2 }}
++  {% endif %}
++  {% if ticker.technical_indicators.ema and ticker.technical_indicators.ema.data|length > 0 %}
++  - EMA ({{ ticker.technical_indicators.ema.metadata.timeframe }}, {{ ticker.technical_indicators.ema.metadata.period }}-period): {{ ticker.technical_indicators.ema.data.0.ema|default:"N/A"|floatformat:2 }}
++  {% endif %}
++  {% if ticker.technical_indicators.sma and ticker.technical_indicators.sma.data|length > 0 %}
++  - SMA ({{ ticker.technical_indicators.sma.metadata.timeframe }}, {{ ticker.technical_indicators.sma.metadata.period }}-period): {{ ticker.technical_indicators.sma.data.0.sma|default:"N/A"|floatformat:2 }}
++  {% endif %}
++  {% if ticker.technical_indicators.dema and ticker.technical_indicators.dema.data|length > 0 %}
++  - DEMA ({{ ticker.technical_indicators.dema.metadata.timeframe }}, {{ ticker.technical_indicators.dema.metadata.period }}-period): {{ ticker.technical_indicators.dema.data.0.dema|default:"N/A"|floatformat:2 }}
++  {% endif %}
++  
++  ### Technical Indicator Interpretation Guidelines
++  - RSI: Values above 70 suggest overbought conditions, below 30 suggest oversold
++  - EMA/SMA: Price position relative to these moving averages indicates trend direction
++  - DEMA: Less lag than simple moving averages, useful for trend confirmation
++  
++  {% if ticker.technical_indicators.rsi and ticker.technical_indicators.rsi.data|length > 0 %}
++  #### RSI Analysis
++  Current RSI: {{ ticker.technical_indicators.rsi.data.0.rsi|default:"N/A"|floatformat:2 }}
++  {% if ticker.technical_indicators.rsi.data.0.rsi > 70 %}
++  The asset is currently showing **overbought** conditions based on RSI.
++  {% elif ticker.technical_indicators.rsi.data.0.rsi < 30 %}
++  The asset is currently showing **oversold** conditions based on RSI.
++  {% else %}
++  The asset is currently in a **neutral** zone based on RSI.
++  {% endif %}
++  {% endif %}
++{% endif %}
+ {% endfor %}
+ 
+ {% if bellwether_assets is not None %}
+@@ -452,21 +504,61 @@ Analyze key bellwether assets (such as SPX500, VIX, EUR/USD, DXY, etc.) to deter
+ 
+ """
+ 
+-def get_full_prompt(query, ticker_quotes=[], bellwether_assets=[], economic_calendar_data=[]):
++def get_full_prompt(query, ticker_quotes=[], bellwether_assets=[], economic_calendar_data=[], query_context=None):
+ 	"""
+-	Given a query, ticker quotes, bellwether assets, economic calendar data get the full prompt needed to
+-	create a detailed response.
++	Generate a comprehensive prompt that integrates all available financial data sources.
++
++	This function is the central prompt builder for Strykr's AI system. It creates structured
++	prompts that combine user queries with relevant financial data to guide the AI in producing
++	thorough, actionable analysis. The prompt ensures responses include market context,
++	specific analysis, risk management and action steps.
++
++	Data sources integrated:
++	- Asset data: Price, volume, and market metrics for queried securities
++	- Bellwether Index: Key market sentiment indicators across asset classes
++	- Economic Calendar: Upcoming events and volatility forecasts
++	- Query Context: Category-specific risk guidelines based on query type
++
++	Args:
++		query (str): The user's financial query
++		ticker_quotes (list): Asset-specific data (price, volume, etc.)
++		bellwether_assets (list): Market sentiment data from bellwether index
++		economic_calendar_data (dict): Upcoming economic events and volatility scores
++		query_context (dict): Query classification and category-specific risk context
++
++	Returns:
++		str: A fully assembled prompt that ensures structured, retail-focused responses
+ 	"""
+ 
+-	# Create and return the prompt
+-	t = Template(best_practice_prompt_template)  # change the prompt template here.
+-	c = Context(
+-		{
+-			"query": query,
++	# Create and return the prompt with comprehensive error handling
++	try:
++		# Prepare context dictionary with null-safety for all data sources
++		context_data = {
++			"query": query or "",  # Ensure query is never None
+ 			"economic_calendar_data": economic_calendar_data if economic_calendar_data else None,
+ 			"bellwether_assets": bellwether_assets if bellwether_assets else None,
+-			"ticker_quotes": ticker_quotes
++			"ticker_quotes": ticker_quotes if ticker_quotes else [],
++			"query_context": query_context if query_context else None
+ 		}
+-	)
+-	prompt = t.render(c)
+-	return prompt
++		
++		# Create template and render the final prompt
++		# This combines all data sources using the structured template
++		t = Template(best_practice_prompt_template)
++		c = Context(context_data)
++		prompt = t.render(c)
++		return prompt
++	except Exception as e:
++		logging.error(f"Error generating prompt: {e}")
++		# Emergency fallback template ensures service continuity
++		# Even without data sources, still provides structured response framework
++		simple_template = Template("""
++		# USER QUERY
++		{{ query }}
++		
++		# RESPONSE GUIDELINES
++		- Focus on general financial principles and best practices
++		- Include risk management considerations (position sizing 1-2%)
++		- Provide actionable insights when possible
++		- Format response with clear sections and bullet points
++		""")
++		return simple_template.render(Context({"query": query or ""}))
